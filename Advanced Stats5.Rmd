@@ -1,0 +1,465 @@
+---
+title: "Advance Stats5"
+author: "Anchal"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r}
+
+library(boot)
+library(ggplot2)
+library(dplyr)
+library(cli)
+library(tidyr)
+library(jpeg)
+library(magick)
+library(factoextra)
+library(gridExtra)
+library(abind)
+library(imgpalr)
+library(Metrics)
+library(imager)
+library(htmltools)
+library(Matrix)
+library(abind)
+library(faraway)
+library(MASS)
+
+```
+
+
+
+# Question 2 - Applied Problem - bootstrap for regression 
+
+Consider the Auto dataset from the ISLR2 library.
+1. First run an OLS between mpg ∼ horsepower, obtain the standard
+errors of the coefficients that is returned by the package
+2. Use bootstrap to obtain the standard errors of the estimates. The
+way to do this would be to look at the coefficients of linear regression
+for each bootstrap sample and compute the standard error from these
+estimates.
+3. Rerun the above two steps for mpg ∼horsepower + I(horsepower2)
+4. Comment on observations. In which case do we have a closer match
+?In which case are errors by regression more inflated as compared to
+bootstrap ? In 1-2 sentences, comment on why is this the case ?
+Algorithm for residual bootstrap
+Input: {Y ,X}
+1. Perform the regression Y ∼X and calculate the residual {ε1,ε2,...,εn}
+and the corresponding regression coefficients β.
+2. Create a new bootstrap sample in the following way : -
+(a) Let the new vector of residuals be ˆε = {ˆε1,ˆε2,...,ˆεn}.Sample ˆε
+from the original set of residuals with replacement.
+(b) Create a new sample ˆY using the equation ˆY = βX + ˆε
+(c) Solve for new ˆβ by solving the regression ˆY ∼X
+3. Repeat the above step B times.
+```{r }
+
+# Load required library and data
+library(ISLR2)
+data(Auto)
+
+# Fit OLS between mpg and horsepower
+ols_model <- lm(mpg ~ horsepower, data = Auto)
+
+# Obtain standard errors of the coefficients
+summary(ols_model)$coefficients[,2]
+#(Intercept)  horsepower 
+#0.717498656 0.006445501 
+
+# Plot residuals vs fitted values for the first OLS model
+
+plot(ols_model$fitted.values, ols_model$residuals, xlab = "Fitted Values", ylab = "Residuals",
+     main = "OLS Residuals vs. Fitted Values")
+
+#we can clearly see heteroscedasticity from the plot
+#the residuals show a funnel shape or any other systematic pattern, then the assumption of homoscedasticity may be violated, indicating the presence of heteroscedasticity.
+#This is a common issue with OLS models that assume homoscedasticity and can be addressed by using methods like the residual bootstrap that account for the heteroscedasticity in the data.
+
+#Next, we use bootstrap to obtain the standard errors of the estimates. We will use the residual bootstrap algorithm described in the problem statement.
+#Residual bootstrapping to account for the potential heteroscedasticity (non-constant variance of errors) in the data, which can cause issues with traditional bootstrapping methods. By using the residual bootstrap, we are resampling the errors/residuals from the OLS regression model, which captures the dependence and heteroscedasticity in the data. This helps to obtain more accurate estimates of the standard errors of the coefficients, which are often used to make inferences about the population parameters.
+
+
+# Compute the residuals
+resid <- residuals(ols_model)
+
+
+# Define the number of bootstrap samples
+boot_samples <- 1000
+
+# Create a matrix to store the bootstrap results
+boot_results <- matrix(0, nrow = boot_samples, ncol = length(coef(ols_model)))
+set.seed(3467)
+# Loop over the number of bootstrap samples
+for (i in 1:boot_samples) {
+  # Resample the residuals with replacement
+  boot_resid <- sample(resid, replace = TRUE)
+  # Create a new response variable by adding the resampled residuals to the predicted values
+  boot_y <- predict(ols_model) + boot_resid
+  # Fit a new model on the bootstrap samples
+  boot_model <- lm(boot_y ~ horsepower, data = Auto)
+  # Store the coefficients in the bootstrap results matrix
+  boot_results[i,] <- coef(boot_model)
+}
+
+# Compute the standard errors of the coefficients
+boot_se <- apply(boot_results, 2, sd)
+#0.720510767 0.006262438
+
+
+#Rerun the above two steps for mpg ∼horsepower + I(horsepower2)
+
+
+# Fit OLS between mpg and horsepower +  I(horsepower2)
+ols_model2 <- lm(mpg ~ horsepower + I(horsepower^2), data = Auto)
+
+# Obtain standard errors of the coefficients
+summary(ols_model2)$coefficients[,2]
+#(Intercept)      horsepower I(horsepower^2) 
+# 1.8004268063    0.0311246171    0.0001220759 
+
+# Plot residuals vs fitted values for the first OLS model
+
+plot(ols_model2$fitted.values, ols_model2$residuals, xlab = "Fitted Values", ylab = "Residuals",
+     main = "OLS Residuals vs. Fitted Values")
+
+# Compute the residuals
+residuals <- residuals(ols_model2)
+
+# Define the number of bootstrap samples
+samples <- 1000
+
+# Create a matrix to store the bootstrap results
+boot_results <- matrix(0, nrow = boot_samples, ncol = length(coef(ols_model2)))
+set.seed(6723)
+# Loop over the number of bootstrap samples
+for (i in 1:samples) {
+  # Resample the residuals with replacement
+  boot_resid <- sample(residuals, replace = TRUE)
+  # Create a new response variable by adding the resampled residuals to the predicted values
+  boot_y <- predict(ols_model2) + boot_resid
+  # Fit a new model on the bootstrap samples
+  boot_model <- lm(boot_y ~ horsepower + I(horsepower^2), data = Auto)
+  # Store the coefficients in the bootstrap results matrix
+  boot_results[i,] <- coef(boot_model)
+}
+
+# Compute the standard errors of the coefficients
+boot_se <- apply(boot_results, 2, sd)
+boot_se
+#1.7797026035 0.0305872126 0.0001196911
+
+#Comment on observations. In which case do we have a closer match
+#?In which case are errors by regression more inflated as compared to
+#bootstrap ? In 1-2 sentences, comment on why is this the case ?
+
+
+#In our case, it is seen that the standard errors obtained from residual bootstrap and OLS are similar because maybe the heteroscedasticity in the data is not very pronounced or the sample size is large enough to reduce the impact of heteroscedasticity on the estimates. Alternatively, it could also be that the distribution of the bootstrap samples is not sufficiently different from the original sample to affect the estimates.
+
+#However, in the second regression, errors are slightly more inflated as compared to bootstrappeed.
+
+```
+
+
+
+
+# QUESTION 3 - Hypothesis Testing using bootstrapping 15 pts
+
+
+### Part 1
+
+$$H_0: There\ is\ no\ statistical\ difference\ in\ ethanol\ percentages\ between\ the\ two\ gas\ stations. $$
+
+$$H_1: There\ is\ statistical\ difference\ in\ ethanol\ percentages\ between\ the\ two\ gas\ stations. $$
+
+
+```{r}
+
+
+# station A : percentage of ethanol in gasoline 
+station_a <- c(10.2, 8.1, 9.4, 8.7, 9.2, 7.5, 9.9, 8.9, 10.1)
+
+
+# station B : percentage of ethanol in gasoline 
+station_b <- c(9.4, 7.1, 7.9, 8.5, 8.1, 8, 5.7, 7.5, 9)
+
+
+### tests for normality
+
+# informal test - normality 
+hist(station_a)
+hist(station_b)
+
+qqnorm(station_a)
+qqline(station_a)
+
+qqnorm(station_b) 
+qqline(station_b)
+
+#histograms are not clearly displaying the normality. So lets do formal test 
+
+# formal test - normality
+shapiro.test(station_a)
+shapiro.test(station_b)
+
+sprintf("Since the p value for the formal test for normality for both stations is greater than the significance value, the distributions for both the stations is normal ")
+
+
+
+
+### test for variances
+
+# H0: Ratio of variances of sample A and sample be is equal to 1
+# H1: Ratio of variances of sample A and sample be is not equal to 1
+
+var.test(station_a, station_b, alternative = "two.sided", conf.level = 0.95)
+
+sprintf(" Variances are the same for both stations since the p value is greater than the significance level 0.05 ")
+
+
+
+
+# Run the t-test
+t.test(station_a, station_b, alternative = "two.sided",  paired = FALSE,  var.equal = TRUE, conf.level = 0.95)
+
+
+```
+
+INTERPRETATION:
+
+Since the p-value is less than the significance level of 0.05, we can reject the null hypothesis and conclude that there is enough evidence to suggest a statistical difference in ethanol percentages between the two gas stations.
+
+
+### Part 2
+
+The t-test is appropriate here as we are comparing the means of two independent samples of continuous data (ethanol percentages). The assumptions of the t-test are that the samples are normally distributed, the variances of the two populations are equal, and the samples are independent. Hence the t-test is appropriate.
+
+However when we look at the normality plot, we see that the data is not really normal. However, since we have a small sample size, the normality assumption may not be crucial and the t-test may still be reasonable to use.
+
+
+### Part 3
+
+
+```{r}
+
+
+combined <- c(station_a,station_b)
+mean_combined <- mean(combined)
+new_A <- station_a - mean(station_a) + mean_combined
+new_B <- station_b - mean(station_b) + mean_combined
+
+bs_1 <- c() 
+bs_2 <- c() 
+
+
+set.seed(123)
+for (i in 1:10000){
+  sample_1 <- sample(new_A, 9, replace=T)
+  bs_1 <- c(bs_1, mean(sample_1))
+  sample_2 <- sample(new_B, 9, replace=T)
+  bs_2 <- c(bs_2, mean(sample_2))
+}
+
+### Finding the difference in means of the two bootstrapped samples.
+mean_diff <- mean(bs_1) - mean(bs_2)
+paste("The difference between the means of the two samples is",round(mean_diff,4))
+
+
+### Histogram of differences
+diff<- bs_1-bs_2
+hist(diff)
+
+sprintf("We observe that the differences are normally distributed")
+
+
+### 95% quantiles
+
+# 2.5 percentile
+a<- quantile(diff, prob = 0.025)
+a
+
+# 97.5 percentile
+b<- quantile(diff, prob = 0.975)
+b
+
+paste(" The 2.5 and 97.5 percentile of difference between the two station samples are ",round(a,3),"and ",round(b,3))
+
+
+```
+
+INTERPRETATION:
+
+The output shows the 2.5th and 97.5th percentiles of the bootstrap distribution of mean differences. The confidence interval (-0.867 and  0.922) indicates that the true difference in means could also be 0 since it lies in this interval. This ideally means that there could be a possible scenario where mean of station A is equal to mean of station B which is contradictory to what we have concluded in the Part 1 of this question.
+
+
+# QUESTION 4 - Robust Linear Regression
+
+
+### Part 1
+
+```{r}
+
+
+fat <- faraway::fat
+
+# defining a data frame
+fat_df <- data.frame(fat)
+View(fat_df)
+
+
+# displaying the top 10 records 
+head(fat_df, 10)
+
+
+# summary
+summary(fat_df)
+
+#checking for nulls
+missing_values <- colSums(is.na(fat_df))
+missing_values
+
+
+#number of columns in the dataset
+length(fat_df)
+
+```
+
+
+```{r}
+### linear regression
+
+lr <- lm(brozek ~ age + weight + height + neck + chest + abdom + hip + thigh + knee + ankle + biceps + forearm + wrist, data=fat)
+
+# Notes: 
+# 1. Siri variable has been removed because it is a measure of body fat percent similar to Brozek's equation. Hence there is no point in adding it in the regression equation
+
+# 2. Adipos variable has been removed because it is calculated using Height and weight and it is highly correlated with both of them.
+
+# 3. Free Variable  (Fat Free Weight) has also been removed because it is calculated using the brozek variable, which means if we include it, it would defeat our purpose.
+
+summary(lr)
+
+```
+
+
+
+```{r}
+# robust linear regression
+rlr <- rlm(brozek ~ age + weight + height + neck + chest + abdom + hip + thigh + knee + ankle + biceps + forearm + wrist, data=fat)
+summary(rlr)
+
+```
+
+
+INTERPRETATION: 
+
+When we compare the lr (least squares regression) and rlr (robust linear regression), we observe that 1. The intercept is lower for the linear regression but this is insignificant for the regressions and each of the predictors seem to have marginally greater effect on the result. 
+
+2. The most predictive predictors in the lr model which are abdomen (abdom), wrist and forearm, are also the most predictive predictors in the rlr model as well, but what varies are some of the lesser predictors. In the rlr model, age, appears to be significant, while it doesn’t in the lr model. 
+
+3.The std error is actually better in the lr model, but only modestly so.
+
+
+```{r}
+
+wts <- rlr$w
+names(wts) <- row.names(fat)
+head(sort(wts),10)
+
+```
+
+```{r}
+
+wts 
+```
+
+
+```{r}
+fat[224,]
+
+```
+
+
+```{r}
+fat[207,]
+
+```
+
+INTERPRETATION: 
+
+These two points are outliers. 224 is very small (brozek) and 207 is quite high (brozek). Another thing to note, is that if we looks at colMeans for the fat dataset, the values for rows 224 and 207 do not have values that seem to vary all that much from the mean, they seem “relatively” typical.
+
+
+### Part 2
+
+
+```{r}
+plot(fat$weight,fat$height, xlab = "Height", ylab = "Weight")
+
+```
+
+
+```{r}
+
+which(fat$height == min(fat$height))
+
+```
+
+INTERPRETATION:
+
+Low height outlier: 42
+
+
+```{r}
+which(fat$weight == max(fat$weight))
+
+```
+
+INTERPRETATION:
+
+Heavy weight outlier: 39
+
+
+We can see that there are two points that are far away from the other points: one with height around 68 inches and weight around 350 pounds, and another with height around 76 inches and weight around 250 pounds. Points 39, 42 were identified as outliers. One has the lowest height and the other the highest weight and are substantially separate from the rest of the points.
+
+
+These are different from part B because these are outliers for height and weight, and not for brozek.
+
+
+```{r}
+
+fat[39,]
+
+
+```
+
+```{r}
+fat[42,]
+
+
+```
+
+```{r}
+
+wts[39]
+
+
+```
+
+
+```{r}
+wts[42]
+
+
+```
+
+INTERPRETATION:
+
+We see that the weight of row 39 is 0.5988 and that of row 42 is 1. Row 39 being the perceived outlier has a lower weight, but that is still not the lowest weight. While, even though we observe that row 42 is an outlier height/weight plot, its weight is 1, which is unexpected.
+
+One might expect these to have the lowest weights in the model. But being a perceived outlier doesn’t necessarily mean that a case isn’t important to the model. The robust linear algorithm only weights values as less important, if they vary substantially from the mean square error.
+
+So if we take the lowest and highest errors (prediction less actual y), and then sort the errors, we see that predictions row 207 and 224 are the farthest away from the true value.
+
